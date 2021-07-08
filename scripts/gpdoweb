@@ -1,0 +1,54 @@
+#!/bin/bash
+
+. ~/.genpatchesrc
+
+# calling make site
+cd ${WEB_LOCAL}
+./makesite.pl
+if [ $? -eq 0 ]; then
+    exit 1
+fi
+
+# send generated htm files for site
+echo "calling rsync command: rsync --exclude=/trunk --exclude=/tarballs --delete -Cavze ssh ${WEB_LOCAL}/output/ ${USERNAME}@${WEB_GENPATCHES_BASE}"
+rsync --exclude=/trunk --exclude=/tarballs --delete -Cavze ssh \
+    ${WEB_LOCAL}/output/ ${USERNAME}@${WEB_GENPATCHES_BASE}
+
+# delete directory if /tmp/linux-patches exists
+
+cd ${LOCAL_TMP}
+
+if [ -d "${LOCAL_TMP}/linux-patches" ]; then
+    echo "deleting directory ${LOCAL_TMP}/linux-patches"
+    rm -rf "${LOCAL_TMP}/linux-patches"
+fi
+
+
+# clone linux-patches
+git clone $REMOTE_BASE ${LOCAL_TMP}/linux-patches
+
+
+# get list of branches
+
+for BRANCH in $(git -C ${LOCAL_TMP}/linux-patches for-each-ref --format='%(refname)' refs/remotes/origin/[0-9].*); do
+    BRANCH="${BRANCH//*\/}"
+
+    # checkout branch
+    cd ${LOCAL_TMP}/linux-patches
+    git -C ${LOCAL_TMP}/linux-patches checkout ${BRANCH}
+
+    # copy patches
+    rsync --delete -Cavze ssh ${LOCAL_TMP}/linux-patches/ ${USERNAME}@${WEB_GENPATCHES_BASE}/trunk/$BRANCH
+done
+
+# should be easy, copy uploaded files from dev server to tarballs directory locally
+#echo "rsync -avz ${USERNAME}@dev.gentoo.org:/space/distfiles-local/${KERNEL_NAME}* ${WEB_LOCAL}/tarballs/"
+#rsync -avz ${USERNAME}@dev.gentoo.org:/space/distfiles-local/${KERNEL_NAME}* ${WEB_LOCAL}/tarballs/
+echo "rsync -avz ${USERNAME}@dev.gentoo.org:~${USERNAME}/public_html/dist/genpatches/${KERNEL_NAME}* ${WEB_LOCAL}/tarballs/"
+rsync -avz ${USERNAME}@dev.gentoo.org:~${USERNAME}/public_html/dist/genpatches/${KERNEL_NAME}* ${WEB_LOCAL}/tarballs/
+
+# easy again, copy local tarballs to public_html
+rsync -Cavze ssh ${WEB_LOCAL}/tarballs/ ${USERNAME}@${WEB_GENPATCHES_BASE}/tarballs
+
+# remove linux-patches
+rm -rf ${LOCAL_TMP}/linux-patches
